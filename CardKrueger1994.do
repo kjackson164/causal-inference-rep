@@ -59,23 +59,33 @@ label variable NREGS2 "number of cash registers in store"
 label variable NREGS112 "number of registers open at 11:00 am"
 
 save cardnj, replace
-cd "D:\GSU\Causal Inference\PS2"
 
-///use cardnj
+///use cardnj, clear
 
 
-/// TABLE 2 ///
-egen nmis=rmiss(*)
+gen pct_full_time = (EMPFT / EMPFT + EMPPT) // percentage full time
+gen FTE = NMGRS + EMPFT + (0.5 * EMPPT) // full-time-equivalent [FTE] employment
+gen PMEAL = PSODA + PFRY + PENTREE // meal price
+gen wage_425 = (WAGE_ST == 4.25) // indicator if wages = 4.25
 
-tabulate CHAIN STATE, col nofreq
+gen pct_full_time2 = (EMPFT2 / EMPFT2 + EMPPT2) // percentage full time
+gen FTE2 = NMGRS2 + EMPFT2 + (0.5 * EMPPT2) // full-time-equivalent [FTE] employment
+gen PMEAL2 = PSODA2 + PFRY2 + PENTREE2 // meal price
+gen wage2_425 = (WAGE_ST2 == 4.25) // indicator if wages = 4.25
+gen wage_5 = (WAGE_ST2 < 5.06 & WAGE_ST2 > 5.04) // indicator if wages = 4.25
 
-//ttest CHAIN if CHAIN==1, by(STATE)
-//tab2 STATE CHAIN
-ttest CHAIN, by(STATE)
-ttest STATE if CHAIN==1, by(STATE)
-bysort CHAIN: prtest STATE, by(STATE)
+gen bk= 0
+gen kfc= 0
+gen roys= 0
+gen wendys= 0
 
-/// TABLE 2 ///
+replace bk = 1 if CHAIN==1
+replace kfc = 1 if CHAIN==2
+replace roys = 1 if CHAIN==3
+replace wendys = 1 if CHAIN==4
+
+
+///-------------------------/// TABLE 2 ///-------------------------///
 
 * Distribution of Store Types (percentages) *
 tabulate CHAIN STATE, col nofreq
@@ -101,13 +111,18 @@ di r(z)
 quietly prtesti 331 .1360 79 .1899
 di r(z)
 
-* Means in Wave I *
-gen TOTALEM = EMPFT + EMPPT // total employment
-gen pct_full_time = (EMPFT / TOTALEM) * 100 // percentage full time
-gen FTE = NMGRS + EMPFT + (0.5 * EMPPT) // full-time-equivalent [FTE] employment
-gen PMEAL = PSODA + PFRY + PENTREE // meal price
-gen wage_425 = (WAGE_ST == 4.25) // indicator if wages = 4.25
+ci means bk kfc roys wendys CO_OWNED ///
+FTE pct_full_time WAGE_ST wage_425 PMEAL HRSOPEN BONUS ///
+FTE2 pct_full_time2 WAGE_ST2 wage2_425 wage_5 PMEAL2 HRSOPEN2 SPECIAL2  ///
+if STATE==1
 
+ci means bk kfc roys wendys CO_OWNED ///
+FTE pct_full_time WAGE_ST wage_425 PMEAL HRSOPEN BONUS ///
+FTE2 pct_full_time2 WAGE_ST2 wage2_425 wage_5 PMEAL2 HRSOPEN2 SPECIAL2 ///
+if STATE==0
+
+
+* Means in Wave I *
 *2a, 2b, 2c, 2e, 2f
 bysort STATE: tabstat FTE pct_full_time WAGE_ST wage_425 PMEAL HRSOPEN, statistic(mean semean)
 *2d
@@ -116,20 +131,13 @@ bysort STATE: sum WAGE_ST if WAGE_ST == 4.25
 tabulate STATE BONUS, row nofreq
 
 * Means in Wave II *
-gen TOTALEM2 = EMPFT2 + EMPPT2 // total employment
-gen pct_full_time2 = (EMPFT / TOTALEM) * 100 // percentage full time
-gen FTE2 = NMGRS2 + EMPFT2 + (0.5 * EMPPT2) // full-time-equivalent [FTE] employment
-gen PMEAL2 = PSODA2 + PFRY2 + PENTREE2 // meal price
-gen wage2_425 = (WAGE_ST2 == 4.25) // indicator if wages = 4.25
-gen wage_5 = (WAGE_ST2 < 5.06 & WAGE_ST2 > 5.04) // indicator if wages = 4.25
-
 *3a, 3b, 3c, 3f, 3g
 bysort STATE: tabstat FTE2 pct_full_time2 WAGE_ST2 wage2_425 wage_5 PMEAL2 HRSOPEN2, statistic(mean semean)
 
 *3h
 tabulate STATE BONUS, row
 
-/// FIGURE 1 INTERVIEW 1///
+///-------------------------/// FIGURE 1 INTERVIEW 1///-------------------------///
 
 ***
 //graph bar STATE, over(WAGE_ST)
@@ -154,101 +162,108 @@ ytitle(Percent of Stores,size(small)) ///
 ylabel(0(5)35) ///
 legend(off)
 
-/// TABLE 3 ///
+graph export figure1.png
 
-*R1C1
-gen FTENJ = .
-sum FTE if STATE==1
-replace FTENJ = r(mean)
 
-*R1C2
-gen FTEPA = .
-sum FTE if STATE==0
-replace FTEPA = r(mean)
+gen wage_range2 = floor(WAGE_ST2 * 10) / 10
+gen PERC_NJ2 = .
+gen PERC_PA2 = .
 
-*R1C3
-gen FTEDIFF = FTE2-FTE
+count if STATE == 1
+local count_state1 = r(N)
+replace PERC_NJ2 = 1/`count_state1'*100 if STATE == 1
 
+count if STATE == 0
+local count_state0 = r(N)
+replace PERC_PA2 = 1/`count_state0'*100 if STATE == 0
+
+graph bar (percent) PERC_NJ2 (percent) PERC_PA2, ///
+over(wage_range2, label(angle(0))) ///
+title(November 1992) ///
+ytitle(Percent of Stores,size(small)) ///
+ylabel(0(5)90) ///
+legend(order(2 "Pennsylvania" 1 "New Jersey"))
+
+graph export figure2.png
+
+///-------------------------/// TABLE 3 ///-------------------------///
+
+*R1C1-3
+ttest FTE, by(STATE) unequal
 *R1C4
-gen FTENJ_low = .
-sum FTE if STATE == 1 & WAGE_ST == 4.25
-replace FTENJ_low = r(mean)
-
+ci means FTE if (STATE == 1) & (wage_425 == 1)
 *R1C5
-gen FTENJ_med = .
-sum FTE if STATE == 1 & WAGE_ST > 4.25 & WAGE_ST < 5
-replace FTENJ_med = r(mean)
-
+ci means FTE if (STATE == 1) & (WAGE_ST > 4.25 & WAGE_ST < 5)
 *R1C6
-gen FTENJ_hi = .
-sum FTE if STATE == 1 & WAGE_ST >=5
-replace FTENJ_hi = r(mean)
+ci means FTE if (STATE == 1) & (WAGE_ST >=5)
 
-*R2C1
-gen FTENJ2 = .
-sum FTE2 if STATE==1
-replace FTENJ2 = r(mean)
-
-*R2C2
-gen FTEPA2 = .
-sum FTE2 if STATE==0
-replace FTEPA2 = r(mean)
-
-*R2C3
-gen FTEDIFF2 = FTENJ2 - FTEPA2 
-
+*R2C1-3
+ttest FTE2, by(STATE) unequal
 *R2C4
-gen FTENJ2_low = .
-sum FTE2 if STATE == 1 & WAGE_ST == 4.25
-replace FTENJ2_low = r(mean)
-
+ci means FTE2 if (STATE == 1) & (wage_425 == 1)
 *R2C5
-gen FTENJ2_med = .
-sum FTE2 if STATE == 1 & WAGE_ST > 4.25 & WAGE_ST < 5
-replace FTENJ2_med = r(mean)
-
+ci means FTE2 if (STATE == 1) & (WAGE_ST > 4.25 & WAGE_ST < 5)
 *R2C6
-gen FTENJ2_hi = .
-sum FTE2 if STATE == 1 & WAGE_ST >= 5
-replace FTENJ2_hi = r(mean)
+ci means FTE2 if (STATE == 1) & (WAGE_ST >=5)
 
 *R3C1
-gen PA_DIFF = FTEPA2-FTEPA  
-
+ttest FTE2 == FTE if STATE==0, unpaired
 *R3C2
-gen NJ_DIFF = FTENJ2-FTENJ
-
+ttest FTE2 == FTE if STATE==1, unpaired
 *R3C3
-gen FTEDIFFDIFF = PA_DIFF-NJ_DIFF
 
 *R3C4
-gen FTEDD_low = FTENJ2_low - FTENJ_low
-
+ttest FTE2 == FTE if (STATE==1) & (wage_425==1), unpaired
 *R3C5
-gen FTEDD_med = FTENJ2_med - FTENJ_med
-
+ttest FTE2 == FTE if (STATE==1) & (WAGE_ST > 4.25 & WAGE_ST < 5), unpaired
 *R3C6
-gen FTEDD_hi = FTENJ2_hi - FTENJ_hi
+ttest FTE2 == FTE if (STATE==1) & (WAGE_ST >=5), unpaired
 
 
-/// TABLE 4 ///
+*R4C1
+ttest FTE2 == FTE if STATE==0
+ttest FTE2 == FTE if STATE==1
+*R4C3
+*R4C4
+ttest FTE2 == FTE if (STATE==1) & (wage_425==1)
+*R4C5
+ttest FTE2 == FTE if (STATE==1) & (WAGE_ST > 4.25 & WAGE_ST < 5)
+*R4C6
+ttest FTE2 == FTE if (STATE==1) & (WAGE_ST >=5)
+
+
+
+///-------------------------/// TABLE 4 ///-------------------------///
+
 *subset
 //drop if EMPFT == . | EMPPT == . | EMPFT2 == . | EMPPT2 == . | NMGRS == . | NMGRS2 == . 
 //drop if WAGE_ST == . | WAGE_ST2 == .
 
-gen subset = 0
-replace msample = 1 if (dif_fte!=.) & (WAGE_ST!=.) & (WAGE_ST2!=.)
-sum dif_fte if msample==1
+gen FTEDIFF = .
+replace FTEDIFF = FTE2-FTE
 
+*same results if adding subset of stores without missing observations
+//gen subset = 0
+//replace subset = 1 if (FTEDIFF!=.) | (WAGE_ST!=.) | (WAGE_ST2!=.)
+//sum FTEDIFF if subset==1
+
+*C1
 reg FTEDIFF STATE
-reg FTEDIFF STATE CHAIN 
+*C2
+reg FTEDIFF STATE bk kfc roys CO_OWNED
+test bk kfc roys CO_OWNED
 
+*C3
 gen GAP = .
 
 replace GAP = 0 if STATE==0
 replace GAP = 0 if STATE==1 & WAGE_ST>=5.05
-replace GAP = ((5.05/WAGE_ST)/WAGE_ST) if STATE==1 & WAGE_ST< 5.05
+replace GAP = ((5.05/WAGE_ST)/WAGE_ST) if STATE==1 & WAGE_ST < 5.05
 
-reg FTEDIFF GAP 
-reg FTEDIFF GAP CHAIN 
-reg FTEDIFF GAP CHAIN SOUTHJ CENTRALJ PA1 PA2
+reg FTEDIFF GAP
+*C4
+reg FTEDIFF GAP bk kfc roys CO_OWNED
+test bk kfc roys CO_OWNED
+*C5
+reg FTEDIFF GAP bk kfc roys CO_OWNED SOUTHJ CENTRALJ PA1 PA2
+test bk kfc roys CO_OWNED SOUTHJ CENTRALJ PA1 PA2
